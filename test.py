@@ -102,15 +102,19 @@ def search(mol, substruct1, substruct2):
     """
     match1 = mol.HasSubstructMatch(substruct1)
     match2 = mol.HasSubstructMatch(substruct2)
-    if match1 and match2:
-        return True
-    else:
-        return False
+    # if match1 and match2:
+    #     return True
+    # else:
+    #     return False
+    return match1, match2
 
 
 if __name__ == '__main__':
+    # 待完善：暂时跳过 all_frags.py 的读取
+    # molecule1 = 
+
     cif_path = '/home/clasper/2507/cif/'
-    cod_id = '1004005'
+    cod_id = '1502373'
     print(f"Loading file from {cod_id}.cif")
     atom_dict, bond_dict = get_struct_info(cif_path, cod_id)
 
@@ -118,10 +122,10 @@ if __name__ == '__main__':
     mol = construct_mol(atom_dict, bond_dict)
 
     patt1 = "C1CCCCC1"
-    patt2 = "CCC"
+    patt2 = "CS(=O)(=O)C"
 
-    substruct1 = Chem.MolFromSmarts("C1CCCCC1")
-    substruct2 = Chem.MolFromSmarts("CCC")
+    substruct1 = Chem.MolFromSmarts(patt1)
+    substruct2 = Chem.MolFromSmarts(patt2)
 
     # mol, substruct1, substruct2 的结构都有待优化
     print(f"Searching cod_id {cod_id} for {patt1} and {patt2}...")
