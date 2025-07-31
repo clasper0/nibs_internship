@@ -17,14 +17,25 @@ csd_workflow.py
 8. 保存对齐后/未能矫正的分子为 sdf 文件
 """
 from pymatgen.io.cif import CifParser   # 更完整地读取 cif 文件信息（包括键长等）
-from pymatgen.analysis.local_env import VoronoiNN
-from pymatgen.core.periodic_table import Element    # 获取元素半径
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from all_frags import Molecule
 from all_frags import PROBE_FRAGMENTS, REF_FRAGMENTS
-import copy
 import numpy as np
+from scipy.spatial.distance import cdist
+
+
+def SimplySub(mol):
+    """
+    Change all bonds to single for the substructures. 
+    Return mol -> mol. 
+    """
+    for b in mol.GetBonds():
+        if b.GetIsAromatic():
+            continue
+        b.SetBondType(Chem.BondType.SINGLE)
+    
+    return mol
 
 
 def SimplifyMol(mol):
@@ -38,6 +49,7 @@ def SimplifyMol(mol):
     for a in mol.GetAtoms():
         a.SetFormalCharge(0)
         a.SetIsAromatic(False)
+
     return mol
 
 
@@ -58,14 +70,14 @@ def get_heavy_indices_from_smarts(smarts):
         # We consider it a core heavy atom if it's not a generic wildcard or explicit hydrogen
         if atom_smarts not in ['*', '[H]', '[#1]']:
             heavy_atom_indices.append(atom.GetIdx())
-            
+
     return heavy_atom_indices
 
 
 def construct_template(smiles):
     template = Chem.MolFromSmiles(smiles)
     template = Chem.AddHs(template)
-    AllChem.EmbedMolecule(template)  
+    AllChem.EmbedMolecule(template)
     order = []
     heavy_count = 0
     for a in template.GetAtoms():
@@ -81,13 +93,15 @@ def construct_template(smiles):
     return template
 
 
-def get_struct_info(cif_path, cod_id):
+def GetStructInfo(cif_path, cod_id):
     """
-    从 CIF 文件中提取必要的原子坐标信息、成键信息，返回 atom_dict, bond_dict
+    Extracts the necessary information from the .cif file, including the atom and bond information. 
+    Returns atom_dict -> {index: coords, label, symbol} and bond_dict -> {index: {index}}. 
     """
     file_path = cif_path + f"{cod_id[0]}/{cod_id[1:3]}/{cod_id[3:5]}/{cod_id}.cif"
     parser = CifParser(file_path)
     structure = parser.parse_structures(primitive=False)[0]
+    structure *= (2, 2, 2)
     cif_data = parser.as_dict()[cod_id]
 
     # atom_dict -> {index: [position: label, symbol]}
@@ -98,51 +112,55 @@ def get_struct_info(cif_path, cod_id):
     # print(atom_dict[440])
 
     # 获取成键原子信息
-    label1 = cif_data['_geom_bond_atom_site_label_1']
-    label2 = cif_data['_geom_bond_atom_site_label_2']
-    labels = list(zip(label1, label2))
-    print(labels)
-    # 获取所有原子的相邻成键原子（但在 CIF 文件中通常不包括 H ）
-    bond_label_dict = {}
-    for label1, label2 in labels:
-        if label1 not in bond_label_dict:
-            bond_label_dict[label1] = []
-        bond_label_dict[label1].append(label2)
-        # if label2 not in bond_label_dict:
-        #     bond_label_dict[label2] = []
-        # bond_label_dict[label2].append(label1)
-    print(bond_label_dict)
-    # 由于成键两端标签和两端索引是一对多的关系，所以必须把标签字典转换成索引字典 (bond_dict)
     bond_dict = {}
-    for label1, label2s in bond_label_dict.items():
-        bond_indexes_1 = [index for index, info in atom_dict.items() if label1 in info]
-        for bond_index_1 in bond_indexes_1:
-            bond_dict[bond_index_1] = set()
-            
-            # 建立嵌套子对象，存储候选 bond_indexes_2 的各个索引及坐标
-            site_1 = structure[bond_index_1] # 成键原子 1 的 site, 用于计算距离，所用方法为: site_1.distance(site_2)
-            for label2 in label2s:  # 获得候选成键原子的索引集合
-                candidates_index_2 = [index for index, info in atom_dict.items() if label2 in info]
-                distances = []
-                for candidate_index_2 in candidates_index_2:
-                    site_2 = structure[candidate_index_2]
-                    distance = site_1.distance(site_2)
-                    distances.append(distance)
-                # if min(distances) < 2:  # 添加距离判断，如果过大则表示两个原子不在同一分子上（位于晶胞的对侧），也就不可能成键
-                #     print(min(distances))
-                #     bond_index_2 = candidates_index_2[distances.index(min(distances))]  # 取出距离最近的索引作为成键原子
-                #     bond_dict[bond_index_1].add(bond_index_2)
-                # print(min(distances))
-                bond_index_2 = candidates_index_2[distances.index(min(distances))]  # 取出距离最近的索引作为成键原子
-                bond_dict[bond_index_1].add(bond_index_2)
-    print(bond_dict)
+    try:
+        label1 = cif_data['_geom_bond_atom_site_label_1']
+        label2 = cif_data['_geom_bond_atom_site_label_2']
+        labels = list(zip(label1, label2))
+        print(labels)
+        # 获取所有原子的相邻成键原子（但在 CIF 文件中通常不包括 H ）
+        bond_label_dict = {}
+        for label1, label2 in labels:
+            if label1 not in bond_label_dict:
+                bond_label_dict[label1] = []
+            bond_label_dict[label1].append(label2)
+            # if label2 not in bond_label_dict:
+            #     bond_label_dict[label2] = []
+            # bond_label_dict[label2].append(label1)
+        print(bond_label_dict)
+        # 由于成键两端标签和两端索引是一对多的关系，所以必须把标签字典转换成索引字典 (bond_dict)
+        for label1, label2s in bond_label_dict.items():
+            bond_indexes_1 = [index for index, info in atom_dict.items() if label1 in info]
+            for bond_index_1 in bond_indexes_1:
+                bond_dict[bond_index_1] = set()
+                
+                # 建立嵌套子对象，存储候选 bond_indexes_2 的各个索引及坐标
+                site_1 = structure[bond_index_1] # 成键原子 1 的 site, 用于计算距离，所用方法为: site_1.distance(site_2)
+                for label2 in label2s:  # 获得候选成键原子的索引集合
+                    candidates_index_2 = [index for index, info in atom_dict.items() if label2 in info]
+                    distances = []
+                    for candidate_index_2 in candidates_index_2:
+                        site_2 = structure[candidate_index_2]
+                        distance = site_1.distance(site_2)
+                        distances.append(distance)
+                    # if min(distances) < 2:  # 添加距离判断，如果过大则表示两个原子不在同一分子上（位于晶胞的对侧），也就不可能成键
+                    #     print(min(distances))
+                    #     bond_index_2 = candidates_index_2[distances.index(min(distances))]  # 取出距离最近的索引作为成键原子
+                    #     bond_dict[bond_index_1].add(bond_index_2)
+                    # print(min(distances))
+                    bond_index_2 = candidates_index_2[distances.index(min(distances))]  # 取出距离最近的索引作为成键原子
+                    bond_dict[bond_index_1].add(bond_index_2)
+        print(bond_dict)
+    except KeyError:
+        print(f"{cod_id}.cif has no bond information, searching for jmol version...")
 
     return atom_dict, bond_dict
 
 
-def construct_mol(atom_dict, bond_dict):
+def ConstructMol(atom_dict, bond_dict):
     """
-    根据 atom_dict, bond_dict, 从头搭建 Mol 分子
+    Extracts the molecule according to the atom_dict and bond_dict. 
+    Return mol -> mol. 
     """
     # 从 atom_dict 中提取元素符号及坐标信息
     positions, symbols = [], []
@@ -198,62 +216,12 @@ def construct_mol(atom_dict, bond_dict):
     return mol
 
 
-def search(mol, substruct1, substruct2):
+def OptimizeMol(mol):
     """
-    进行子结构查询匹配
+    Optimizes the mol structure, incluing removing the Hs, 
+    allocating the aromaticity and Adding the Hs. 
+    Return mol -> mol. 
     """
-    match1 = mol.GetSubstructMatches(substruct1, useQueryQueryMatches=True)
-    match2 = mol.GetSubstructMatches(substruct2, useQueryQueryMatches=True)
-    # if match1 and match2:
-    #     return True
-    # else:
-    #     return False
-    return match1, match2
-
-
-if __name__ == '__main__':
-    # 待完善：暂时跳过 all_frags.py 的读取
-    molecule1 = REF_FRAGMENTS['frag_43']
-    molecule2 = REF_FRAGMENTS['frag_46']
-
-    smarts_1 = molecule1.smarts
-    smarts_2 = molecule2.smarts
-    smiles_1 = molecule1.smiles
-    smiles_2 = molecule2.smiles
-    heavy_atom_1 = [atom.GetIdx() for atom in Chem.MolFromSmiles(smiles_1).GetAtoms() if atom.GetSymbol() != "H"]
-    heavy_atom_2 = [atom.GetIdx() for atom in Chem.MolFromSmiles(smiles_2).GetAtoms() if atom.GetSymbol() != "H"]
-    num_heavy_1 = len(heavy_atom_1)
-    num_heavy_2 = len(heavy_atom_2)
-    heavy_indices_1 = get_heavy_indices_from_smarts(smarts_1)
-    heavy_indices_2 = get_heavy_indices_from_smarts(smarts_2)
-
-    print(f"Fragment 1: {smarts_1} -> {smiles_1}", flush=True)
-    print(f"Fragment 2: {smarts_2} -> {smiles_2}", flush=True)
-    print(f"Heavy atoms: {num_heavy_1} and {num_heavy_2}", flush=True)
-
-    print("\nConstructing templates...", flush=True)
-    template_1 = construct_template(smiles_1)
-    template_2 = construct_template(smiles_2)
-    num_1 = template_1.GetNumAtoms()
-    num_2 = template_2.GetNumAtoms()
-    print(f"Template atoms: {num_1} and {num_2}", flush=True)
-
-    substruct1 = Chem.MolFromSmarts(smarts_1)
-    substruct2 = Chem.MolFromSmarts(smarts_2)
-    print("fragments: ", Chem.MolToSmiles(substruct1), Chem.MolToSmiles(substruct2))
-
-    # 待完善：暂不考虑输入输出文件目录问题
-
-    cif_path = '/home/clasper/2507/cif/'
-    cod_id = '1502373'
-    print(f"Loading file from {cod_id}.cif")
-    atom_dict, bond_dict = get_struct_info(cif_path, cod_id)
-
-    print(f"Constructing mol for {cod_id}.cif")
-    mol = construct_mol(atom_dict, bond_dict)
-    # print(Chem.MolToSmiles(mol))
-
-    # 优化 mol 结构（去除所有氢，芳香性判断，加上通配符）
     rw_mol = Chem.RWMol(mol)
     bonds_to_remove = []
     for bond in rw_mol.GetBonds():
@@ -269,22 +237,30 @@ if __name__ == '__main__':
         rw_mol.RemoveAtom(idx)
     mol = rw_mol.GetMol()
 
-    from sklearn.decomposition import PCA
-    threshold = 0.1
+    tolerance = 0.05
     sssr = Chem.GetSymmSSSR(mol)
     if sssr:
+        n = len(sssr)
+        i, j = 0, 0
         for ring in sssr:
             coords = []
             conf = mol.GetConformer()
             for atom_idx in ring:
                 position = conf.GetAtomPosition(atom_idx)
                 # print(f"position: ({position.x},{position.y},{position.z})")
-                coords.append((position.x, position.y, position.z))
-            pca = PCA(n_components=3)
-            pca.fit(coords)
-            variance_ratio = pca.explained_variance_ratio_
-            if variance_ratio[2] < threshold:
-                print(f"Ring {ring} is aromatic. ")
+                coords.append(position)
+            coords = np.array(coords)
+            centroid = np.mean(coords, axis=0)
+            coords_centered = coords - centroid
+            # SVD 拟合平面
+            _, _, vh = np.linalg.svd(coords_centered)
+            normal = vh[2, :]
+            # 计算距离
+            distances = np.abs(np.dot(coords_centered, normal))
+            max_deviation = np.max(distances)
+            rms_deviation = np.sqrt(np.mean(distances**2))
+            if max_deviation < tolerance:
+                # print(f"Ring {[atom_idx for atom_idx in ring]} is aromatic. ")
                 for atom_idx in ring:
                     atom = mol.GetAtomWithIdx(atom_idx)
                     atom.SetIsAromatic(True)
@@ -294,21 +270,150 @@ if __name__ == '__main__':
                     if begin_idx in ring and end_idx in ring:
                         bond.SetIsAromatic(True)
                         bond.SetBondType(Chem.BondType.AROMATIC)
+                i += 1
             else:
-                print(f"Ring {ring} is not aromatic. ")
+                # print(f"Ring {[atom_idx for atom_idx in ring]} is not aromatic. ")
+                j += 1
+        print(f"Found {n} rings, with {i} aromatic while {j} unaromatic. ")
 
-    # Chem.SanitizeMol(mol)
-    # mol = Chem.AddHs(mol)
+    # for id in [1, 32, 65, 97, 128, 161, 192, 225, 256]:
+    #     a = mol.GetAtomWithIdx(id)
+    #     print(a.GetSymbol())
+
+    sanitize_ops = (
+        Chem.SanitizeFlags.SANITIZE_FINDRADICALS |
+        Chem.SanitizeFlags.SANITIZE_SETAROMATICITY |
+        Chem.SanitizeFlags.SANITIZE_SETCONJUGATION |
+        Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION |
+        Chem.SanitizeFlags.SANITIZE_CLEANUP 
+        # Chem.SanitizeFlags.SANITIZE_CHECKVALENCE 
+        )
+    Chem.SanitizeMol(mol, sanitizeOps=sanitize_ops)
+    mol = Chem.AddHs(mol, addCoords=True)
 
     # Chem.Kekulize(mol, clearAromaticFlags=False)
     # Chem.AssignAtomChiralTagsFromStructure(mol)
     # Chem.AssignStereochemistry(mol)
-    final_smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
-    print(final_smiles)
-    mol2 = Chem.MolFromSmiles(final_smiles)
-    mol2 = Chem.AddHs(mol2)
+    # final_smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
+    # print(final_smiles)
+    # mol2 = Chem.MolFromSmiles(final_smiles)
+    # mol2 = Chem.AddHs(mol2)
 
-    Chem.rdmolfiles.MolToMolFile(mol, "mol.mol")
-    Chem.rdmolfiles.MolToMolFile(mol2, "mol2.mol")
+    # Chem.rdmolfiles.MolToMolFile(mol, "mol.mol")
+    # Chem.rdmolfiles.MolToMolFile(mol2, "mol2.mol")
 
-    # print(answer)
+    return mol
+
+
+def Search(cod_id, mol, substruct1, substruct2):
+    """
+    Tries to get the matches substructures, 
+    Return the hits -> ((index), (index)), which exists in a molecule. 
+    """
+    hits = []
+    match1s = mol.GetSubstructMatches(substruct1, useQueryQueryMatches=True)
+    match2s = mol.GetSubstructMatches(substruct2, useQueryQueryMatches=True)
+
+    if match1s and match2s:
+        # 获取第一个子结构的所有重原子索引
+        heavy_indices_1s = {}
+        for match1 in match1s:
+            heavy_indices_1 = set()
+            for idx in match1:
+                atom = mol.GetAtomWithIdx(idx)
+                if atom.GetAtomicNum() != 1:
+                    heavy_indices_1.add(idx)
+            if heavy_indices_1:
+                heavy_indices_1s[frozenset(heavy_indices_1)] = match1
+        # print(len(heavy_indices_1s))
+        # 获取第二个子结构的所有重原子索引
+        heavy_indices_2s = {}
+        for match2 in match2s:
+            heavy_indices_2 = set()
+            for idx in match2:
+                atom = mol.GetAtomWithIdx(idx)
+                if atom.GetAtomicNum() != 1:
+                    heavy_indices_2.add(idx)
+            if heavy_indices_2:
+                heavy_indices_2s[frozenset(heavy_indices_2)] = match2
+        # print(len(heavy_indices_2s))
+        conf = mol.GetConformer()
+        for heavy_indices_1, match1 in heavy_indices_1s.items():
+            coords_1 = np.array([conf.GetAtomPosition(i) for i in heavy_indices_1])
+            for heavy_indices_2, match2 in heavy_indices_2s.items():
+                coords_2 = np.array([conf.GetAtomPosition(j) for j in heavy_indices_2])
+                distances = cdist(coords_1, coords_2, metric='euclidean')
+                if np.min(distances) < 5.0:
+                    hits.append((match1, match2))
+        # print(len(hits))
+        if hits:
+            print("Get hits! continue...")
+        else:
+            print("No matched distances, exiting...")
+    elif match1s and not match2s:
+        smiles = Chem.MolToSmiles(substruct2)
+        print(f"{cod_id} has no substructure: {smiles}, exiting...")
+    elif match2s and not match1s:
+        smiles = Chem.MolToSmiles(substruct1)
+        print(f"{cod_id} has no substructure: {smiles}, exiting...")
+    else:
+        print("No matched substructures, exiting...")
+
+
+if __name__ == '__main__':
+    # 待完善：暂时跳过 all_frags.py 的读取
+    molecule1 = REF_FRAGMENTS['frag_43']
+    molecule2 = REF_FRAGMENTS['frag_46']
+
+    smarts_1 = molecule1.smarts.replace("=", "")    # 尝试？？？
+    smarts_2 = molecule2.smarts.replace("=", "")
+    smiles_1 = molecule1.smiles
+    smiles_2 = molecule2.smiles
+    heavy_atom_1 = [atom.GetIdx() for atom in Chem.MolFromSmiles(smiles_1).GetAtoms() if atom.GetSymbol() != "H"]
+    heavy_atom_2 = [atom.GetIdx() for atom in Chem.MolFromSmiles(smiles_2).GetAtoms() if atom.GetSymbol() != "H"]
+    num_heavy_1 = len(heavy_atom_1)
+    num_heavy_2 = len(heavy_atom_2)
+    heavy_indices_1 = get_heavy_indices_from_smarts(smarts_1)
+    heavy_indices_2 = get_heavy_indices_from_smarts(smarts_2)
+
+    print(f"Fragment 1: {smarts_1} -> {smiles_1}", flush=True)
+    print(f"Fragment 2: {smarts_2} -> {smiles_2}", flush=True)
+    print(f"Heavy atoms: {num_heavy_1} and {num_heavy_2}", flush=True)
+    print("\nConstructing templates...", flush=True)
+    template_1 = construct_template(smiles_1)
+    template_2 = construct_template(smiles_2)
+    num_1 = template_1.GetNumAtoms()
+    num_2 = template_2.GetNumAtoms()
+    print(f"Template atoms: {num_1} and {num_2}", flush=True)
+    substruct1 = Chem.MolFromSmarts(smarts_1)
+    substruct2 = Chem.MolFromSmarts(smarts_2)
+    print("fragments: ", Chem.MolToSmarts(substruct1), Chem.MolToSmarts(substruct2))
+    print("=" * 50)
+    # 待完善：暂不考虑输入输出文件目录问题
+
+    cif_path = '/home/clasper/2507/cif/'
+    cod_id = '1000001'
+    print(f"Loading file from {cod_id}.cif...")
+    atom_dict, bond_dict = GetStructInfo(cif_path, cod_id)
+
+    if atom_dict and bond_dict:
+        print(f"Constructing mol for {cod_id}.cif")
+        mol = ConstructMol(atom_dict, bond_dict)
+        # print(Chem.MolToSmiles(mol))
+    if not bond_dict:
+        mol = Chem.MolFromMolFile(f"{cod_id}.mol")
+        if not mol:
+            print(f"Parse for {cod_id}.mol failed, please check if cif2mol.jmol has runned. ")
+
+    if mol:
+        print("Optimizing mol structure...")
+        mol = OptimizeMol(mol)
+        print("=" * 50)
+        print(f"Searching cod_id {cod_id} for {smarts_1} and {smarts_2}...")
+        hits = Search(cod_id, mol, substruct1, substruct2)
+        if hits:
+            print(f"Got {len(hits)} hits! continue...")
+        else:
+            print("No hits, exit.")
+    else:
+        print(f"Failed to get mol for {cod_id}.cif, exit. ")
