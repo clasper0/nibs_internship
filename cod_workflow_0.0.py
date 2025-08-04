@@ -319,7 +319,7 @@ def OptimizeMol(mol, atom_mol_dict, valid_molecules):
             max_deviation = np.max(distances)
             rms_deviation = np.sqrt(np.mean(distances**2))
             if max_deviation < tolerance:
-                print(f"Ring is aromatic. ")
+                # print(f"Ring is aromatic. ")
                 for atom_idx in ring:
                     atom = mol.GetAtomWithIdx(atom_idx)
                     atom.SetIsAromatic(True)
@@ -334,14 +334,15 @@ def OptimizeMol(mol, atom_mol_dict, valid_molecules):
                 if i > 500:    # 假如已经判断了超过 500 个芳香环，认为已经足够进行后续分析，则终止对环的优化
                     break
             else:
-                print(f"Ring is not aromatic. ")
+                # print(f"Ring is not aromatic. ")
                 j += 1
                 optimized_molecules.append(atom_mol_dict[ring[0]])
                 if j > 500: # 假如已经判断了超过 500 个非芳香环，认为已经足够进行后续分析，则终止对环的优化
                     break
-        print(f"Found {n} rings, with {i} aromatic while {j} unaromatic. ")
+        # print(f"Found {n} rings, with {i} aromatic while {j} unaromatic. ")
     else:
-        print("No ring found. ")
+        # print("No ring found. ")
+        pass
 
     optimized_molecules = optimized_molecules if optimized_molecules else valid_molecules
 
@@ -401,10 +402,10 @@ def Search(cod_id, mol, substruct1, substruct2, atom_mol_dict, valid_molecules):
         heavy_indices_1s = {}
         for match1 in match1s:
             if not all([atom_mol_dict[match1[i]] == atom_mol_dict[match1[i + 1]] for i in range(len(match1) - 1)]):
-                print(f"match1 {match1} on different molecule! continue...")
+                # print(f"match1 {match1} on different molecule! continue...")
                 continue
             if not atom_mol_dict[match1[0]] in valid_molecules:
-                print("match1 not on desired molecules, continue...")
+                # print("match1 not on desired molecules, continue...")
                 continue
             heavy_indices_1 = set()
             for idx in match1:
@@ -418,9 +419,10 @@ def Search(cod_id, mol, substruct1, substruct2, atom_mol_dict, valid_molecules):
         heavy_indices_2s = {}
         for match2 in match2s:
             if not all([atom_mol_dict[match2[i]] == atom_mol_dict[match2[i + 1]] for i in range(len(match2) - 1)]):
-                print(f"match2 {match2} on different molecule! ")
+                # print(f"match2 {match2} on different molecule! ")
+                continue
             if not atom_mol_dict[match2[0]] in valid_molecules:
-                print("match2 not on desired molecules, continue...")
+                # print("match2 not on desired molecules, continue...")
                 continue
             heavy_indices_2 = set()
             for idx in match2:
@@ -614,8 +616,18 @@ def correct_H(mol, template, heavy_indices):
                         H_cor_dict[heavy_coord_key] = []
                     H_cor_dict[heavy_coord_key].append(new_h_pos)
 
-        mol_rmHs = Chem.RemoveHs(copy.deepcopy(copy_mol), sanitize=False)
+        H_to_removed = []
+        for i in range(copy_mol.GetNumAtoms()):
+            if copy_mol.GetAtomWithIdx(i).GetSymbol() == "H":
+                H_to_removed.append(i)
+        mol_rmHs = Chem.RWMol(copy.deepcopy(copy_mol))
+        for i in sorted(H_to_removed, reverse=True):
+            mol_rmHs.RemoveAtom(i)
+        mol_rmHs = mol_rmHs.GetMol()
+        Chem.SanitizeMol(mol_rmHs)
+        # mol_rmHs = Chem.RemoveHs(copy.deepcopy(copy_mol))
         mol_addHs = Chem.AddHs(mol_rmHs, addCoords=True)
+        Chem.SanitizeMol(mol_addHs)
         # for atom in mol_addHs.GetAtoms():
         #     print(f"Atom: {atom.GetIdx()}, Symbol: {atom.GetSymbol()}, Position: {mol_addHs.GetConformer().GetAtomPosition(atom.GetIdx())}", flush=True)
 
@@ -694,8 +706,6 @@ if __name__ == '__main__':
     
     molecule1 = REF_FRAGMENTS[frag1]
     molecule2 = PROBE_FRAGMENTS[frag2]
-    # molecule1 = REF_FRAGMENTS['frag_14']
-    # molecule2 = REF_FRAGMENTS['frag_46']
 
     smarts_1 = molecule1.smarts.replace("=", "")    # 目前需要去掉 all_frags.py 中的键类型和电荷信息
     smarts_2 = molecule2.smarts.replace("=", "")
@@ -747,14 +757,14 @@ if __name__ == '__main__':
 
 
     # 待完善：获得 cod_ids 的思路：在外部写脚本遍历数据库下的文件名提取
-    cod_ids = ["1100173", "1100183"]
-    # with open("/mnt/e/Users/clasper/tmp/cif/cod_ids.txt", "r", encoding="utf-8") as r:
-    #     for line in r.readlines():
-    #         cod_id = line.strip()
-    #         cod_ids.append(cod_id)
+    cod_ids = []
+    with open("/mnt/e/Users/clasper/tmp/cif/cod_ids.txt", "r", encoding="utf-8") as r:
+        for line in r.readlines():
+            cod_id = line.strip()
+            cod_ids.append(cod_id)
     
     # 调试用
-    tested_cod_ids = []
+    # tested_cod_ids = []
     # # 已匹配：1100173, 1100183
     # for i in range(1000000, 1100183):
     #     tested_cod_id = str(i)
@@ -763,8 +773,8 @@ if __name__ == '__main__':
     mol_pairs = []
 
     for cod_id in cod_ids:
-        if cod_id in tested_cod_ids:
-            continue
+        # if cod_id in tested_cod_ids:
+        #     continue
         symbols = GetSymbol(cif_dir, cod_id)
         if symbols:
             if not required_symbols <= set(symbols):
@@ -786,7 +796,7 @@ if __name__ == '__main__':
         elif not bond_dict or not atom_dict:
             try:
                 print(f"Get {cod_id}.sdf. ")
-                sdf_file = sdf_dir / f"{cod_id}.sdf"
+                sdf_file = sdf_dir / f"{cod_id[0]}/{cod_id[1:3]}/{cod_id[3:5]}/{cod_id}.sdf"
                 mol = Chem.SDMolSupplier(sdf_file, sanitize=False)[0]
             except OSError:
                 print(f"Failed to parse {cod_id}.sdf, please check if cif2sdf.jmol has runned. ")
@@ -848,6 +858,7 @@ if __name__ == '__main__':
 
     print("\nAligning molecules...", flush=True)
     ref_mol = correctH_mol_pairs[0]
+    Chem.SanitizeMol(ref_mol)
     ref_mols = Chem.GetMolFrags(ref_mol, asMols=True)
     ref_central_mol, ref_side_mol = ref_mols[0], ref_mols[1]
     aligned_mols = []
