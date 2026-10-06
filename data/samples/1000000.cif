@@ -1,0 +1,33 @@
+data_1000000
+_chemical_formula_sum   'C20 H68 Al4 N8 O32 P8'
+_cell_length_a   7.8783
+_cell_length_b   10.4689
+_cell_length_c   16.0680
+_cell_angle_alpha  90.0
+_cell_angle_beta   95.147
+_cell_angle_gamma  90.0
+_symmetry_space_group_name_H-M   'P 1 21/c 1'
+loop_
+_symmetry_equiv_pos_as_xyz
+'x, y, z'
+'-x, y+1/2, -z+1/2'
+'-x, -y, -z'
+'x, -y+1/2, z+1/2'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Al1 Al 0.2340 0.0700 0.1200
+P1  P  0.5400 0.1600 0.0600
+P2  P  0.0600 0.1200 0.2300
+O1  O  0.6000 0.2200 0.0700
+O2  O  0.4700 0.0900 0.0780
+O3  O  0.1200 0.1800 0.2400
+O4  O  0.0100 0.0600 0.2500
+O5  O  0.0300 0.1900 0.1800
+N1  N  0.2500 0.3300 0.4100
+N2  N  0.1500 0.4100 0.4500
+C1  C  0.1000 0.2500 0.5000
+C2  C  0.1800 0.1300 0.3000
