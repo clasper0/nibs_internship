@@ -1,0 +1,8 @@
+# cif2mol.jmol
+set defaultLoadScript "unitcell"
+
+load "/home/clasper/2507/cif/1/00/00/1000005.cif" {3 3 3}
+write V3000 "/home/clasper/2507/codes/1000005.mol"
+print "SUCCESS: MOL file generated."
+
+quit

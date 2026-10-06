@@ -1,0 +1,3 @@
+set defaultLoadScript "unitcell"
+load '/mnt/e/Users/clasper/tmp/cif/1/00/00/1000001.cif' {2 2 2}
+print 'Success: sdf file generated.'
