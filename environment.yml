@@ -1,0 +1,33 @@
+name: cod-benchmark
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy=1.26
+  - scipy=1.13
+  - rdkit=2025.03.4
+  - pandas=2.2
+  - matplotlib-base=3.10
+  - scikit-learn=1.5
+  - pytest=8
+  - pip
+  - pip:
+      # pymatgen is only needed by the optional pymatgen-based reader path;
+      # the COD branch itself runs on numpy + rdkit alone.
+      - pymatgen>=2024.1
+
+# ---------------------------------------------------------------------------
+# The original run used an environment named `csd`, which additionally pinned
+# `csd-python-api=3.4.1` from https://conda.ccdc.cam.ac.uk. That package is
+# NOT listed above because it is licence-gated and cannot be installed on a
+# machine without CSD entitlement.
+#
+# To reproduce the licensed environment instead, use:
+#     conda env create -f environment-csd.yml
+# or add the channel and package back:
+#     conda install -c https://conda.ccdc.cam.ac.uk csd-python-api=3.4.1
+#
+# Note: if you install pymatgen via pip it will upgrade numpy to 2.x, which
+# breaks rdkit and csd-python-api. Pin numpy back afterwards:
+#     pip install "numpy==1.26.4"
+# ---------------------------------------------------------------------------

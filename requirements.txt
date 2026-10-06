@@ -1,0 +1,25 @@
+# Python dependencies for the COD benchmark-construction pipeline.
+#
+# The COD branch needs numpy + rdkit only; scipy is used by the dimer search
+# distance filter and pymatgen by the optional structure-inspection path.
+#
+# IMPORTANT: pymatgen pulls in numpy 2.x, which is incompatible with
+# rdkit 2025.03 and with csd-python-api (<2.0). Keep numpy pinned at 1.26.
+
+numpy==1.26.4
+scipy==1.13.1
+rdkit==2025.3.4
+pandas==2.2.3
+scikit-learn==1.5.2
+
+# Optional: only needed for the pymatgen-based reader path
+pymatgen>=2024.1
+
+# Development
+pytest>=8.0
+
+# ---------------------------------------------------------------------------
+# NOT installable from here: csd-python-api==3.4.1
+# It is licence-gated and served from https://conda.ccdc.cam.ac.uk :
+#     conda install -c https://conda.ccdc.cam.ac.uk csd-python-api=3.4.1
+# ---------------------------------------------------------------------------

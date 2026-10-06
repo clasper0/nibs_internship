@@ -1,0 +1,56 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Environments ----
+.env
+.venv/
+env/
+venv/
+micromamba/
+miniconda3/
+*.conda
+
+# ---- Pipeline outputs ----
+# Conversion intermediates and generated structures are data, not source.
+out/
+output/
+tmp/
+unicon/
+*.log
+sbatch_*.list
+jobs/
+
+# Structures / results produced by a run
+*.sdf
+*.mol
+*.mol2
+*.pdb
+*.xyz
+
+# ...but keep the fixtures the test suite depends on
+!data/samples/*.cif
+!tests/**/*.sdf
+!tests/**/*.pdb
+
+# ---- Jupyter ----
+test.ipynb
+
+# ---- Lab notebooks / scratch ----
+.recovered/
+*.swp
+*~
+.DS_Store
